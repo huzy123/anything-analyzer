@@ -33,10 +33,15 @@ import type {
 } from "./db/repositories";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
+import { randomUUID } from "node:crypto";
 
 /**
  * Register all IPC handlers for communication between renderer and main process.
  */
+
+/** Active analysis abort controllers, keyed by sessionId */
+const analysisControllers = new Map<string, AbortController>();
+
 export function registerIpcHandlers(deps: {
   sessionManager: SessionManager;
   aiAnalyzer: AiAnalyzer;
@@ -108,6 +113,29 @@ export function registerIpcHandlers(deps: {
 
   ipcMain.handle("session:delete", async (_event, sessionId: string) => {
     await sessionManager.deleteSession(sessionId);
+  });
+
+  // ---- Window Control (frameless window) ----
+
+  ipcMain.handle("window:minimize", () => {
+    windowManager.getMainWindow()?.minimize();
+  });
+
+  ipcMain.handle("window:maximize", () => {
+    const win = windowManager.getMainWindow();
+    if (win?.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win?.maximize();
+    }
+  });
+
+  ipcMain.handle("window:close", () => {
+    windowManager.getMainWindow()?.close();
+  });
+
+  ipcMain.handle("window:isMaximized", () => {
+    return windowManager.getMainWindow()?.isMaximized() ?? false;
   });
 
   // ---- Browser Control ----
@@ -258,7 +286,22 @@ export function registerIpcHandlers(deps: {
 
     // Resolve template: if purpose matches a template ID, load it
     const template = purpose ? findTemplate(purpose) : findTemplate("auto");
-    return aiAnalyzer.analyze(sessionId, config, onProgress, purpose, template ?? undefined, selectedSeqs);
+
+    // Cancel any existing analysis for this session
+    analysisControllers.get(sessionId)?.abort();
+    const controller = new AbortController();
+    analysisControllers.set(sessionId, controller);
+
+    try {
+      return await aiAnalyzer.analyze(sessionId, config, onProgress, purpose, template ?? undefined, selectedSeqs, controller.signal);
+    } finally {
+      analysisControllers.delete(sessionId);
+    }
+  });
+
+  ipcMain.handle("ai:cancel", async (_event, sessionId: string) => {
+    analysisControllers.get(sessionId)?.abort();
+    analysisControllers.delete(sessionId);
   });
 
   ipcMain.handle(
@@ -534,6 +577,37 @@ export function registerIpcHandlers(deps: {
     }
     return result;
   });
+
+  // ---- Shell ----
+  ipcMain.handle("shell:openExternal", async (_event, url: string) => {
+    const { shell } = await import("electron");
+    await shell.openExternal(url);
+  });
+
+  // ---- Fingerprint Profile ----
+
+  ipcMain.handle("fingerprint:get", async (_event, sessionId: string) => {
+    return profileStore.get(sessionId) ?? null;
+  });
+
+  ipcMain.handle("fingerprint:update", async (_event, profileJson: string) => {
+    const profile = JSON.parse(profileJson);
+    profileStore.update(profile);
+  });
+
+  ipcMain.handle("fingerprint:regenerate", async (_event, sessionId: string) => {
+    return profileStore.regenerate(sessionId) ?? null;
+  });
+
+  ipcMain.handle("fingerprint:enable", async (_event, sessionId: string) => {
+    const tabManager = windowManager.getTabManager();
+    if (!tabManager) throw new Error("Browser not ready");
+    await sessionManager.enableStealth(sessionId, tabManager);
+  });
+
+  ipcMain.handle("fingerprint:disable", async () => {
+    await sessionManager.disableStealth();
+  });
 }
 
 // ---- Config persistence helpers ----
@@ -590,7 +664,7 @@ export async function applyProxy(config: ProxyConfig | null): Promise<void> {
 
 // ---- MCP Server config persistence ----
 
-const DEFAULT_MCP_SERVER_CONFIG: MCPServerSettings = { enabled: false, port: 23816 };
+const DEFAULT_MCP_SERVER_CONFIG: MCPServerSettings = { enabled: false, port: 23816, authEnabled: true, authToken: '' };
 
 function getMCPServerConfigPath(): string {
   return join(app.getPath("userData"), "mcp-server-config.json");
@@ -598,12 +672,22 @@ function getMCPServerConfigPath(): string {
 
 export function loadMCPServerConfig(): MCPServerSettings {
   const path = getMCPServerConfigPath();
-  if (!existsSync(path)) return DEFAULT_MCP_SERVER_CONFIG;
-  try {
-    return { ...DEFAULT_MCP_SERVER_CONFIG, ...JSON.parse(readFileSync(path, "utf-8")) };
-  } catch {
-    return DEFAULT_MCP_SERVER_CONFIG;
+  let config: MCPServerSettings;
+  if (!existsSync(path)) {
+    config = { ...DEFAULT_MCP_SERVER_CONFIG };
+  } else {
+    try {
+      config = { ...DEFAULT_MCP_SERVER_CONFIG, ...JSON.parse(readFileSync(path, "utf-8")) };
+    } catch {
+      config = { ...DEFAULT_MCP_SERVER_CONFIG };
+    }
   }
+  // Auto-generate token if empty (first run or upgraded from old config)
+  if (!config.authToken) {
+    config.authToken = randomUUID();
+    saveMCPServerConfig(config);
+  }
+  return config;
 }
 
 function saveMCPServerConfig(config: MCPServerSettings): void {

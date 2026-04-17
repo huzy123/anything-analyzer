@@ -88,6 +88,35 @@ export function useCapture(sessionId: string | null): UseCaptureReturn {
         const savedMessages = await window.electronAPI.getChatMessages(latestReport.id);
         if (savedMessages.length > 0) {
           chatHistory = savedMessages as ChatMessage[];
+        } else {
+          // Legacy report without persisted chat — reconstruct [system, assistant] prefix
+          // so that chatHistory.slice(2) renders follow-up messages correctly
+          const reqSummary = requests.slice(0, 50).map(r => {
+            let path = r.url;
+            try { path = new URL(r.url).pathname; } catch { /* keep full url */ }
+            return `#${r.sequence} ${r.method} ${path} → ${r.status_code ?? '?'}`;
+          }).join('\n');
+
+          const hookSummary = hooks.length > 0
+            ? '\n\nDetected hooks:\n' + hooks.slice(0, 20).map(h =>
+                `[${h.hook_type}] ${h.function_name}`
+              ).join('\n')
+            : '';
+
+          const contextBlock = reqSummary
+            ? `\n\n<captured_data_summary>\nCaptured ${requests.length} requests:\n${reqSummary}${requests.length > 50 ? `\n... and ${requests.length - 50} more` : ''}${hookSummary}\n</captured_data_summary>`
+            : '';
+
+          const systemContent = `你是一位网站协议分析专家。基于之前的分析报告和捕获数据，回答用户的追问。保持技术精确，用中文回复。\n\n你可以使用 get_request_detail 工具，通过传入请求序号(seq)来查看任意请求的完整详情（请求头、请求体、响应头、响应体）。当用户追问某个具体请求或需要更多细节时，请主动调用此工具获取数据。${contextBlock}`;
+
+          chatHistory = [
+            { role: 'system' as const, content: systemContent },
+            { role: 'assistant' as const, content: latestReport.report_content },
+          ];
+
+          // Persist for future loads
+          window.electronAPI.saveChatMessages(latestReport.id, chatHistory)
+            .catch(err => console.error("Failed to backfill chat messages:", err));
         }
       }
 

@@ -604,7 +604,9 @@ export class LLMRouter {
    * 将底层网络错误转换为用户可理解的诊断信息。
    */
   private diagnoseNetworkError(err: Error, url: string): string {
-    const msg = err.message || "";
+    // Node.js 18+ wraps the real error in err.cause — extract it for better diagnosis
+    const cause = (err as any).cause;
+    const msg = [err.message, cause?.message, cause?.code].filter(Boolean).join(' | ');
     const host = (() => {
       try { return new URL(url).host; } catch { return url; }
     })();
@@ -641,7 +643,8 @@ export class LLMRouter {
 
     // Generic "fetch failed" — the most common opaque error
     if (msg.includes("fetch failed")) {
-      return `网络请求失败：无法连接到 ${host}。常见原因：1) API 地址配置错误 2) 网络无法访问该地址（如需科学上网） 3) 本地中转服务未启动。`;
+      const causeDetail = cause ? ` (${cause.code || cause.message || cause})` : '';
+      return `网络请求失败：无法连接到 ${host}${causeDetail}。常见原因：1) API 地址配置错误 2) 网络无法访问该地址（如需科学上网） 3) 本地中转服务未启动。`;
     }
 
     // Fallback: preserve original message

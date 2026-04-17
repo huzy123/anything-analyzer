@@ -1,22 +1,22 @@
-# Anything Analyzer v3.3.3
+# Anything Analyzer v3.3.4
 
-## 新功能
+## Bug 修复
 
-- **追问对话持久化** — AI 分析报告的追问问答现在会保存到数据库，重启应用后自动恢复
-  - 每个分析报告拥有独立的对话历史
-  - 多次分析同一 Session 互不影响
-  - 切换 Session 或重启后自动加载最新报告的完整对话
+- **修复界面白屏** — 恢复 v3.3.3 中被误删的窗口控制、指纹伪装、Shell 等 IPC handlers，修复应用启动后白屏无法使用的问题
+- **修复追问对话消失** — 旧报告（v3.3.3 之前生成）打开后发送追问，消息和回答不可见的问题；现在会自动重建对话上下文并回写数据库
+- **修复取消分析功能** — 恢复 AbortController 逻辑，分析过程中可正常取消
+- **恢复 react-window 依赖** — 修复虚拟列表组件因缺少依赖导致的渲染异常
 
 ## 改进
 
-- **LLM 超时时间延长** — 连接超时从 2 分钟延长至 10 分钟，避免慢速中转服务误报超时
-  - 用户可随时通过取消按钮手动中止
+- **网络错误诊断增强** — 提取 `err.cause` 展示真实错误原因，不再被 `fetch failed` 兜底信息吞掉细节
+- **MCP Server 认证恢复** — 恢复 Bearer token 自动生成和认证开关功能
 
 ## 下载
 
 | 平台 | 文件 |
 |------|------|
-| Windows | `Anything-Analyzer-Setup-3.3.3.exe` |
-| macOS (Apple Silicon) | `Anything-Analyzer-3.3.3-arm64.dmg` |
-| macOS (Intel) | `Anything-Analyzer-3.3.3-x64.dmg` |
-| Linux | `Anything-Analyzer-3.3.3.AppImage` |
+| Windows | `Anything-Analyzer-Setup-3.3.4.exe` |
+| macOS (Apple Silicon) | `Anything-Analyzer-3.3.4-arm64.dmg` |
+| macOS (Intel) | `Anything-Analyzer-3.3.4-x64.dmg` |
+| Linux | `Anything-Analyzer-3.3.4.AppImage` |

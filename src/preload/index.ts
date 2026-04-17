@@ -11,6 +11,12 @@ window.addEventListener("message", (event) => {
 
 // Expose IPC APIs to renderer
 contextBridge.exposeInMainWorld("electronAPI", {
+  // Window control (frameless window)
+  minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
+  maximizeWindow: () => ipcRenderer.invoke("window:maximize"),
+  closeWindow: () => ipcRenderer.invoke("window:close"),
+  isWindowMaximized: () => ipcRenderer.invoke("window:isMaximized"),
+
   // Session management
   createSession: (name: string, targetUrl: string) =>
     ipcRenderer.invoke("session:create", name, targetUrl),
@@ -38,6 +44,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   exportFile: (defaultName: string, content: string) =>
     ipcRenderer.invoke("dialog:exportFile", defaultName, content),
 
+  // Shell
+  openExternal: (url: string) => ipcRenderer.invoke("shell:openExternal", url),
+
   // Tab management
   createTab: (url?: string) => ipcRenderer.invoke("tabs:create", url),
   closeTab: (tabId: string) => ipcRenderer.invoke("tabs:close", tabId),
@@ -58,6 +67,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // AI analysis
   startAnalysis: (sessionId: string, purpose?: string, selectedSeqs?: number[]) =>
     ipcRenderer.invoke("ai:analyze", sessionId, purpose, selectedSeqs),
+  cancelAnalysis: (sessionId: string) =>
+    ipcRenderer.invoke("ai:cancel", sessionId),
   sendFollowUp: (sessionId: string, reportId: string, history: unknown[], userMessage: string) =>
     ipcRenderer.invoke("ai:chat", sessionId, reportId, history, userMessage),
   getChatMessages: (reportId: string) =>
@@ -129,6 +140,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
   enableMitmSystemProxy: () => ipcRenderer.invoke("mitm-proxy:enableSystemProxy"),
   disableMitmSystemProxy: () => ipcRenderer.invoke("mitm-proxy:disableSystemProxy"),
 
+  // Fingerprint
+  getFingerprintProfile: (sessionId: string) =>
+    ipcRenderer.invoke("fingerprint:get", sessionId),
+  updateFingerprintProfile: (profile: unknown) =>
+    ipcRenderer.invoke("fingerprint:update", JSON.stringify(profile)),
+  regenerateFingerprintProfile: (sessionId: string) =>
+    ipcRenderer.invoke("fingerprint:regenerate", sessionId),
+  enableFingerprint: (sessionId: string) =>
+    ipcRenderer.invoke("fingerprint:enable", sessionId),
+  disableFingerprint: () =>
+    ipcRenderer.invoke("fingerprint:disable"),
+
   // Tab events
   onTabCreated: (callback: (tab: unknown) => void) => {
     ipcRenderer.on("tabs:created", (_event, data) => callback(data));
@@ -149,6 +172,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   onHookCaptured: (callback: (data: unknown) => void) => {
     ipcRenderer.on("capture:hook", (_event, data) => callback(data));
+  },
+  onStorageCaptured: (callback: (data: unknown) => void) => {
+    ipcRenderer.on("capture:storage", (_event, data) => callback(data));
   },
   onAnalysisProgress: (callback: (chunk: string) => void) => {
     ipcRenderer.on("ai:progress", (_event, chunk) => callback(chunk));

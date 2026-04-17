@@ -1,6 +1,6 @@
 {
   "name": "anything-analyzer",
-  "version": "3.3.3",
+  "version": "3.3.4",
   "description": "Universal web protocol analyzer with embedded browser and AI-powered analysis",
   "packageManager": "pnpm@10.24.0",
   "main": "./out/main/index.js",
@@ -24,6 +24,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.3",
+    "react-window": "^2.2.7",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.0",
     "uuid": "^11.1.0",
